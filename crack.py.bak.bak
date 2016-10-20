@@ -18,12 +18,11 @@ import copy
 import sys
 from encrypt import cipher_to_words, decrypt
 from letter_frequency import LETTER_FREQUENCIES, LETTER_TOTAL
-from string import ascii_lowercase
 
 #DEFAUT_DICTIONARY = 'dict_full.txt.dict.json'
 DEFAUT_DICTIONARY = 'english_words.txt.dict.json'
 #DEFAUT_DICTIONARY = 'target_pt.dict.json'
-DEBUG = True
+DEBUG = False
 
 interactive_key = None
 
@@ -77,7 +76,7 @@ class InteractiveKey:
             return 0
 
 
-        if self.count + self.tempcount > LETTER_TOTAL - 1:
+        if self.count + self.tempcount == LETTER_TOTAL:
             return 2
         return 1
 
@@ -90,6 +89,7 @@ class InteractiveKey:
             self.tempkey[char] = set()
 
 
+
 def crackito_ergo_sum(ciphertext):
 
     global interactive_keys
@@ -98,68 +98,55 @@ def crackito_ergo_sum(ciphertext):
     with open(DEFAUT_DICTIONARY) as fp:
         dictionary = json.load(fp)
 
-    # we will attack the biggest words first (they are less)
-    words = sorted(words, key=len, reverse=True)
-
     interactive_keys = [InteractiveKey({}) for x in words]
 
-    key = _recurse_word(words, dictionary, 0)
 
-    if key:
-        return decrypt(key, ciphertext)
+    return _recurse_word(words, dictionary, 0)
 
 
-    return "failed to decrypt :["
-
-
-def _recurse_word(cipherwords, dictionary, index):
+def _recurse_word(cipherwords, dictionary, prefix):
 
 
     cipherword = cipherwords[0]
     length = str(len(cipherword))
-    interactive_key = interactive_keys[index]
+    interactive_key = interactive_keys[prefix]
 
-    prefix = 'a'*50
-    i = 0
-    total = len(dictionary[length])
     for word in dictionary[length]:
 
-        i += 1
-        if DEBUG and index < 1:# and (i % 100) == 0:
-            print("{:%}".format(i/total))
-        
-        if word.startswith(prefix):
-            continue
-        else:
-            prefix = ''
+        if DEBUG:
+            print("{} {}".format('-'*prefix, word))
+
         for char, value in zip(word, cipherword):
-            if char not in ascii_lowercase:
-                continue
             
             res = interactive_key.add_value(char, value)
-            prefix += char
             if res == 0 :
                 interactive_key.drop()
                 break
             if res == 2:
-                return interactive_key.commit()
+                print("weee! {} {}".format(interactive_key.count, interactive_key.tempcount))
+                print("{}".format(interactive_key.commit()))
+                return decrypt(interactive_key.commit(), cipherwords)
 
 
         else:
+            if DEBUG:
+                print()
 
-            if index == len(interactive_keys) - 2:
-                return interactive_key.commit()
+            if prefix == len(interactive_keys) - 1:
+                return word
        
-            interactive_keys[index+1].count = interactive_key.count + interactive_key.tempcount
-            interactive_keys[index+1].tempcount = 0 
-            interactive_keys[index+1].key = interactive_key.commit()
+            interactive_keys[prefix+1].count = interactive_key.count + interactive_key.tempcount
+            interactive_keys[prefix+1].tempcount = 0 
+            interactive_keys[prefix+1].key = interactive_key.commit()
 
             result = _recurse_word(cipherwords[1:], 
-                                   dictionary, index+1)
+                                   dictionary, prefix+1)
             if result:
-                return result
+                return "{} {}".format(word, result)
             else:
                 interactive_key.drop()
+    if DEBUG:
+        print("")
     return None
 
 

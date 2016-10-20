@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""
+    <name>
+        crack
+
+    <description>
+        Tries to crack a ciphertext using different approaches to cracking
+
+    <usage>
+        crack <file>
+
+    <output>
+        Will output status messages and the result, if found
+"""
+import json
+import re
+import copy
+import sys
+from encrypt import cipher_to_words
+from letter_frequency import LETTER_FREQUENCIES
+
+DEFAUT_DICTIONARY = 'dict_full.txt.dict.json'
+#DEFAUT_DICTIONARY = 'target_pt.dict.json'
+DEBUG = False
+
+class InteractiveKey:
+    """
+    <name>
+        InteractiveKey
+
+    <descritption>
+        Defines a key that can be dynamically upated with new values
+        will automatically check if the possible key values have been overflown
+    """
+
+    key = None
+
+    def __init__(self, oldkey):
+
+        if oldkey: 
+            self.key = copy.deepcopy(oldkey)
+            return 
+
+        self.key = {}
+        for char in LETTER_FREQUENCIES:
+            self.key[char] = set()
+
+    def add_value(self, char, value):
+
+        # verify that this value is not in another key
+        for keychar in self.key:
+            if char == keychar:
+                continue
+            if value in self.key[keychar]:
+                raise Exception("{} is already on {}!".format(value, keychar))
+            
+        # now, check that we are not adding a value to a key that's already full
+        self.key[char].add(value)
+        if len(self.key[char]) > LETTER_FREQUENCIES[char]:
+            raise Exception("Cannot add any new values to {}".format(char))
+
+
+
+def crackito_ergo_sum(ciphertext):
+
+    words = cipher_to_words(ciphertext)
+    with open(DEFAUT_DICTIONARY) as fp:
+        dictionary = json.load(fp)
+
+    return _recurse_word({}, words, dictionary, 0)
+
+
+def _recurse_word(key, cipherwords, dictionary, prefix):
+
+    if not cipherwords:
+        return '.'
+
+    cipherword = cipherwords[0]
+    filter_letters = [set for x in cipherword]
+    length = "{}".format(len(cipherword))
+    for word in dictionary[length]:
+
+        if DEBUG:
+            print("{} {}".format('-'*prefix, word))
+
+        interactive_key = InteractiveKey(key)
+        for char, value in zip(word, cipherword):
+            try:
+                interactive_key.add_value(char, value)
+            except Exception as e:
+                if DEBUG:
+                    print(e)
+                break
+
+        else:
+            if DEBUG:
+                print()
+            result = _recurse_word(interactive_key.key, cipherwords[1:], 
+                                   dictionary, prefix + len(word))
+            if result:
+                return "{} {}".format(word, result)
+    if DEBUG:
+        print("")
+    return None
+
+
+def dumb_space_cracking(ciphertext):
+    """
+    <name>
+        dumb_space_cracking
+
+    <description>
+        Does that, find spaces and crack if there's a piece of ciphertext with
+        this specific behavior
+    """
+    with open('barcode.json') as fp:
+        space_dict = json.load(fp)
+
+    words = cipher_to_words(ciphertext)
+    i = 0
+
+    # build a barcode for this ciphertext
+    cipher_barcodes = []
+    for word in words:
+        i += len(word)
+        cipher_barcodes.append(i)
+        i += 1
+
+    # compare barcodes with the available barcodes
+    for barcode_info in space_dict:
+        barcode = barcode_info[0]
+        for length, cipher_length in zip(barcode, cipher_barcodes):
+            if length != cipher_length:
+                break
+        else:
+            if DEBUG:
+                print("found barcode!")
+                print(barcode_info[1])
+            return barcode_info[1]
+    else: 
+        print("[xx] couldn't find!")
+
+    return 0
+
+if __name__ == "__main__":
+
+    with open(sys.argv[1]) as fp:
+        ciphertext = fp.read()
+
+    #dumb_space_cracking(ciphertext)
+    print("{}".format(crackito_ergo_sum(ciphertext)))
+
+
+
